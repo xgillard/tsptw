@@ -1,0 +1,16 @@
+[package]
+name    = "tsptw"
+version = "0.1.0"
+authors = ["Xavier Gillard <xavier.gillard@uclouvain.be>"]
+edition = "2018"
+
+[dependencies]
+ddo              = "0.3.7"
+bitset-fixed     = "0.1.0"
+#
+structopt        = "0.3.21"
+
+[profile.release]
+lto              = "thin"
+incremental      = true
+panic            = "abort"
