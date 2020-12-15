@@ -91,11 +91,8 @@ impl Problem<State> for TSPTW {
 
     fn transition_cost(&self, state: &State, _vars : &ddo::VarSet, d: ddo::Decision) -> isize {
         // TSPTW is a minimization problem but the solver works with a 
-        // maximization perspective. So we have to negate the max if we want to
-        // yield a lowe bound.
-        //
-        //-(self.max_distance_to(state, d.value as usize) as isize)
-
+        // maximization perspective. So we have to negate the min if we want to
+        // yield a lower bound.
         let twj = self.instance.timewindows[d.value as usize];
         let travel_time = self.min_distance_to(state, d.value as usize);
         let waiting_time = match state.elapsed {

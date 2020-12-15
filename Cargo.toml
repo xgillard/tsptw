@@ -9,6 +9,7 @@ ddo              = "0.3.7"
 bitset-fixed     = "0.1.0"
 #
 structopt        = "0.3.21"
+num_cpus         = "1.13.0"
 
 [profile.release]
 lto              = "thin"

@@ -22,7 +22,7 @@
 
 use std::fs::File;
 
-use ddo::{NoDupFrontier, ParallelSolver, Problem, Solver, config_builder};
+use ddo::{NoDupFrontier, ParallelSolver, Problem, Solver, FixedWidth, config_builder};
 use structopt::StructOpt;
 use tsptw::{instance::TSPTWInstance, model::TSPTW, relax::TSPTWRelax};
 
@@ -34,15 +34,16 @@ use tsptw::{instance::TSPTWInstance, model::TSPTW, relax::TSPTWRelax};
 #[derive(StructOpt)]
 struct Args {
     /// The path to the TSW+TW instance that needs to be solved.
-    instance : String,
-    /*
+    instance: String,
     /// The verbosity level of what is going to be logged on the console.
-    verbosity: Option<usize>,
+    #[structopt(name="verbosity", short, long)]
+    verbosity: Option<u8>,
     /// The maximum width of an mdd layer
-    width    : Option<usize>,
+    #[structopt(name="width", short, long)]
+    width: Option<usize>,
     /// How many threads do you want to use to solve the problem ?
-    threads  : Option<usize>
-    */
+    #[structopt(name="threads", short, long)]
+    threads: Option<usize>
 }
 
 fn main() -> Result<(), std::io::Error> {
@@ -51,28 +52,45 @@ fn main() -> Result<(), std::io::Error> {
     let inst = TSPTWInstance::from(File::open(&args.instance)?);
     let pb   = TSPTW::new(inst);
     let relax= TSPTWRelax::new(&pb);
-    let conf = config_builder(&pb, relax);
-    let mdd  = conf.into_deep();
+    let mut solvr= mk_solver(&pb, relax, &args);
+    let _  = solvr.as_mut().maximize();
 
-    let mut solver = ParallelSolver::new(mdd)
-        .with_verbosity(2)
-        .with_frontier(NoDupFrontier::default());
-    let outcome    = solver.maximize();
-
-    if let Some(best_value) = outcome.best_value {
-        let best = -(best_value as f32 / 10000.0);
-        println!("The shortest tour is completed in {}", best);
-
-        print!("Permutation : ");
-        let mut sln = vec![0; pb.nb_vars()];
-
-        for decision in solver.best_solution().unwrap().iter() {
-            sln[decision.variable.id()] = decision.value;
-        }
-        println!("{:?}", sln);
-    } else {
-        println!("There is no solution to this problem");
-    }
-
+    print_solution(pb.nb_vars(), solvr.as_ref());
     Ok(())
+}
+
+fn mk_solver<'a, 'b>(pb: &'a TSPTW, relax: TSPTWRelax<'a>, args: &Args) -> Box<dyn Solver + 'a> {
+    if let Some(w) = args.width {
+        let mdd = config_builder(pb, relax)
+            .with_max_width(FixedWidth(w))
+            .into_deep();
+        let solver = ParallelSolver::new(mdd)
+            .with_verbosity(args.verbosity.unwrap_or(0))
+            .with_nb_threads(args.threads.unwrap_or(num_cpus::get()))
+            .with_frontier(NoDupFrontier::default());
+        Box::new(solver)
+    } else {
+        let conf = config_builder(pb, relax);
+        let mdd  = conf.into_deep();
+        let solver = ParallelSolver::new(mdd)
+            .with_verbosity(args.verbosity.unwrap_or(0))
+            .with_nb_threads(args.threads.unwrap_or(num_cpus::get()))
+            .with_frontier(NoDupFrontier::default());
+        Box::new(solver)
+    }
+}
+fn print_solution(n: usize, solver: &dyn Solver) {
+   if let Some(solution) = solver.best_solution() {
+       println!("Best cost = {}", -(solver.best_value().unwrap() as f32 / 10000.0));
+       let mut perm = vec![0; n];
+       for d in solution.iter() {
+           perm[d.variable.id()] = d.value;
+       }
+       for v in perm {
+           print!("{} ", v);
+       }
+       println!();
+   } else {
+       println!("There is no feasible solution to this problem");
+   }
 }

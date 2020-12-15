@@ -21,17 +21,35 @@
 //! for the TSP + TW problem.
 
 use bitset_fixed::BitSet;
-use ddo::Relaxation;
+use ddo::{BitSetIter, Problem, Relaxation};
 
 use crate::{model::TSPTW, state::{ElapsedTime, Position, State}};
 
 #[derive(Clone)]
 pub struct TSPTWRelax<'a> {
-    pb : &'a TSPTW
+    pb : &'a TSPTW,
+    cheapest_edge: Vec<usize>
 }
 impl <'a> TSPTWRelax<'a> {
     pub fn new(pb: &'a TSPTW) -> Self {
-        Self{pb}
+        let cheapest_edge = Self::compute_cheapest_edges(pb);
+        Self{pb, cheapest_edge}
+    }
+
+    fn compute_cheapest_edges(pb: &'a TSPTW) -> Vec<usize> {
+        let mut cheapest = vec![];
+        let n = pb.nb_vars();
+        for i in 0..n {
+            let mut min_i = usize::max_value();
+            for j in 0..n {
+                if i == j {
+                    continue;
+                }
+                min_i = min_i.min(pb.instance.distances[(i,j)]);
+            }
+            cheapest.push(min_i);
+        }
+        cheapest
     }
 }
 
@@ -71,6 +89,15 @@ impl Relaxation<State> for TSPTWRelax<'_> {
         cost
     }
 
+    fn estimate(&self, state  : &State) -> isize {
+       let mut total = 0;
+
+       for i in BitSetIter::new(&state.can_visit) {
+           total += self.cheapest_edge[i];
+       }
+
+       -(total as isize)
+    }
     // TODO An example RUB could be the weight of the spanning tree connecting 
     //      the remaining nodes (... but that would be quite expensive to compute
     //      at each node).
