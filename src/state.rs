@@ -37,7 +37,9 @@ pub struct State {
     /// The amount of time which has elapsed since the salesman left the depot
     pub elapsed  : ElapsedTime,
     /// These are the nodes he still has to visit
-    pub can_visit: BitSet
+    pub can_visit: BitSet,
+
+    pub tolerance: u16,
 }
 
 /// This represents the postition of the salesman in his tour.
@@ -79,6 +81,18 @@ impl ElapsedTime {
             ElapsedTime::FuzzyAmount{earliest, latest} => 
                    (earliest >= tw.earliest && earliest <= tw.latest)
                 || (latest   >= tw.earliest && latest   <= tw.latest),
+        }
+    }
+    pub fn earliest(self) -> usize {
+        match self {
+            ElapsedTime::FixedAmount{duration} => duration,
+            ElapsedTime::FuzzyAmount{earliest,..}=> earliest
+        }
+    }
+    pub fn latest(self) -> usize {
+        match self {
+            ElapsedTime::FixedAmount{duration} => duration,
+            ElapsedTime::FuzzyAmount{latest,..}=> latest
         }
     }
 }

@@ -20,6 +20,8 @@
 //! This module contains the definition and implementation of the relaxation 
 //! for the TSP + TW problem.
 
+use std::ops::Not;
+
 use bitset_fixed::BitSet;
 use ddo::{BitSetIter, Problem, Relaxation};
 
@@ -45,7 +47,7 @@ impl <'a> TSPTWRelax<'a> {
                 if i == j {
                     continue;
                 }
-                min_i = min_i.min(pb.instance.distances[(i,j)]);
+                min_i = min_i.min(pb.instance.distances[(j, i)]);
             }
             cheapest.push(min_i);
         }
@@ -57,14 +59,18 @@ impl Relaxation<State> for TSPTWRelax<'_> {
     fn merge_states(&self, states: &mut dyn Iterator<Item=&State>) -> State {
         let mut position  = BitSet::new(self.pb.instance.nb_nodes as usize);
         let mut can_visit = BitSet::new(self.pb.instance.nb_nodes as usize);
+        let mut all_agree = BitSet::new(self.pb.instance.nb_nodes as usize).not();
+
         let mut earliest  = usize::max_value();
         let mut latest    = usize::min_value();
+        let mut max_tol   = 0_16;
 
         for state in states {
             match &state.position {
                 Position::Node(x)     => position.set(*x as usize, true),
                 Position::Virtual(xs) => position |= xs,
             };
+
             match state.elapsed {
                 ElapsedTime::FixedAmount{duration} => { 
                     earliest = earliest.min(duration);
@@ -74,14 +80,22 @@ impl Relaxation<State> for TSPTWRelax<'_> {
                     earliest = earliest.min(ex);
                     latest   = latest.max(lx);
                 }
-            }
+            };
+
+            all_agree &= &state.can_visit;
             can_visit |= &state.can_visit;
+
+            max_tol = max_tol.max(state.tolerance);
         }
+
+        let tolerance = can_visit.count_ones() - all_agree.count_ones();
+        let tolerance = tolerance.max(max_tol as u32) as u16;
 
         State {
             position: Position::Virtual(position),
             elapsed : ElapsedTime::FuzzyAmount{earliest, latest},
-            can_visit
+            can_visit,
+            tolerance,
         }
     }
 
@@ -89,15 +103,38 @@ impl Relaxation<State> for TSPTWRelax<'_> {
         cost
     }
 
+
     fn estimate(&self, state  : &State) -> isize {
-       let mut total = 0;
+       let must_visit        = (state.can_visit.count_ones() - state.tolerance as u32) as usize;
+       let mut cheap         = vec![];
+       let mut mandatory     = 0;
+       let mut back_to_depot = usize::max_value();
+       let mut violations    = 0_u16;
 
        for i in BitSetIter::new(&state.can_visit) {
-           total += self.cheapest_edge[i];
+           cheap.push(i);
+           back_to_depot = back_to_depot.min(self.pb.instance.distances[(i, 0)]);
+
+           let latest   = self.pb.instance.timewindows[i].latest;
+           let earliest = state.elapsed.add(self.cheapest_edge[i]).earliest();
+           if earliest > latest {
+               violations += 1;
+           }
        }
 
-       -(total as isize)
+       if violations > state.tolerance {
+           return isize::min_value();
+       }
+
+       cheap.sort_unstable_by_key(|x| self.cheapest_edge[*x]);
+       for x in cheap.iter().take(must_visit) {
+           mandatory += self.cheapest_edge[*x];
+       }
+    
+       -((mandatory + back_to_depot) as isize)
     }
+
+
     // TODO An example RUB could be the weight of the spanning tree connecting 
     //      the remaining nodes (... but that would be quite expensive to compute
     //      at each node).

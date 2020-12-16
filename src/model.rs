@@ -39,7 +39,8 @@ impl TSPTW {
         let mut state = State {
             position : Position::Node(0),
             elapsed  : ElapsedTime::FixedAmount{duration: 0},
-            can_visit: BitSet::new(inst.nb_nodes as usize).not()
+            can_visit: BitSet::new(inst.nb_nodes as usize).not(),
+            tolerance: 0,
         };
         state.can_visit.set(0, false);
         Self { instance: inst, initial: state }
@@ -85,7 +86,8 @@ impl Problem<State> for TSPTW {
         State {
             position : Position::Node(d.value as u16),
             elapsed  : time,
-            can_visit: remaining
+            can_visit: remaining,
+            tolerance: state.tolerance, 
         }
     }
 
@@ -115,7 +117,7 @@ impl Problem<State> for TSPTW {
 }
 
 impl TSPTW {
-    fn can_move_to(&self, state: &State, j: usize) -> bool {
+    pub fn can_move_to(&self, state: &State, j: usize) -> bool {
         let twj         = self.instance.timewindows[j];
         let min_arrival = state.elapsed.add(self.min_distance_to(state, j));
         match min_arrival {
