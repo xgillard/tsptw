@@ -20,9 +20,9 @@
 //! This is the main entry point of the program. This is what gets compiled to
 //! the tsptw binary.
 
-use std::fs::File;
+use std::{fs::File, path::Path, time::{Duration, Instant}};
 
-use ddo::{NoDupFrontier, ParallelSolver, Problem, Solver, FixedWidth, config_builder};
+use ddo::{Completion, FixedWidth, NoDupFrontier, ParallelSolver, Problem, Solution, Solver, TimeBudget, config_builder};
 use structopt::StructOpt;
 use tsptw::{instance::TSPTWInstance, model::TSPTW, relax::TSPTWRelax};
 
@@ -43,54 +43,126 @@ struct Args {
     width: Option<usize>,
     /// How many threads do you want to use to solve the problem ?
     #[structopt(name="threads", short, long)]
-    threads: Option<usize>
+    threads: Option<usize>,
+    /// How long do you want the solver to keep working on your problem ? (in seconds)
+    #[structopt(name="duration", short, long)]
+    duration: Option<u64>,
+    /// Shall we print the header
+    #[structopt(name="header", long)]
+    header : bool,
 }
 
 fn main() -> Result<(), std::io::Error> {
-    let args = Args::from_args();
+    let args     = Args::from_args();
 
-    let inst = TSPTWInstance::from(File::open(&args.instance)?);
-    let pb   = TSPTW::new(inst);
-    let relax= TSPTWRelax::new(&pb);
+    let inst     = TSPTWInstance::from(File::open(&args.instance)?);
+    let pb       = TSPTW::new(inst);
+    let relax    = TSPTWRelax::new(&pb);
     let mut solvr= mk_solver(&pb, relax, &args);
-    let _  = solvr.as_mut().maximize();
 
-    print_solution(pb.nb_vars(), solvr.as_ref());
+    let start    = Instant::now();
+    let outcome  = solvr.as_mut().maximize();
+    let finish   = Instant::now();
+
+    let instance = instance_name(&args.instance);
+    let nb_vars  = pb.nb_vars();
+    let lb       = objective(solvr.as_ref().best_lower_bound());
+    let ub       = objective(solvr.as_ref().best_upper_bound());
+    let solution = solvr.as_ref().best_solution();
+    let duration = finish - start;
+
+    if args.header {
+        print_header();
+    }
+    print_solution(&instance, nb_vars, outcome, &lb, &ub, duration, solution);
     Ok(())
+}
+fn print_header() {
+    println!("INSTANCE\tSTATUS\t\tUB\t\tLB\t\tDURATION (seconds)\tSOLUTION");
+}
+fn print_solution(name: &str, n: usize, completion: Completion, lb: &str, ub: &str, duration: Duration, solution: Option<Solution>) {
+    println!("{}\t{}\t\t{}\t\t{}\t\t{:18.3}\t{}",
+             name, 
+             status(completion), 
+             lb, ub,
+             duration.as_secs_f32(),
+             solution_to_string(n, solution));
+}
+fn instance_name<P: AsRef<Path>>(name: P) -> String {
+    name.as_ref().file_stem().unwrap().to_str().unwrap().to_string()
+}
+fn objective(x: isize) -> String {
+    match x {
+        isize::MIN => "+inf".to_string(),
+        isize::MAX => "-inf".to_string(),
+        _ => format!("{:.2}", -(x as f32 / 10_000.0_f32))
+    }
+}
+fn status(completion: Completion) -> &'static str {
+   if completion.is_exact {
+       "Proved"
+   } else {
+       "Timeout"
+   }
+}
+fn solution_to_string(nb_vars: usize, solution: Option<Solution>) -> String {
+    match solution {
+        None   => "No feasible solution found".to_string(),
+        Some(s)=> {
+           let mut perm = vec![0; nb_vars];
+           for d in s.iter() {
+               perm[d.variable.id()] = d.value;
+           }
+           let mut txt = String::new();
+           for v in perm {
+                txt = format!("{} {}", txt, v);
+           }
+           txt
+        }
+    }
 }
 
 fn mk_solver<'a, 'b>(pb: &'a TSPTW, relax: TSPTWRelax<'a>, args: &Args) -> Box<dyn Solver + 'a> {
-    if let Some(w) = args.width {
-        let mdd = config_builder(pb, relax)
-            .with_max_width(FixedWidth(w))
-            .into_deep();
-        let solver = ParallelSolver::new(mdd)
-            .with_verbosity(args.verbosity.unwrap_or(0))
-            .with_nb_threads(args.threads.unwrap_or(num_cpus::get()))
-            .with_frontier(NoDupFrontier::default());
-        Box::new(solver)
-    } else {
-        let conf = config_builder(pb, relax);
-        let mdd  = conf.into_deep();
-        let solver = ParallelSolver::new(mdd)
-            .with_verbosity(args.verbosity.unwrap_or(0))
-            .with_nb_threads(args.threads.unwrap_or(num_cpus::get()))
-            .with_frontier(NoDupFrontier::default());
-        Box::new(solver)
+    match (&args.width, &args.duration) {
+        (Some(w), Some(d)) => {
+            let mdd = config_builder(pb, relax)
+                .with_max_width(FixedWidth(*w))
+                .with_cutoff(TimeBudget::new(Duration::from_secs(*d)))
+                .into_deep();
+            let solver = ParallelSolver::new(mdd)
+                .with_verbosity(args.verbosity.unwrap_or(0))
+                .with_nb_threads(args.threads.unwrap_or(num_cpus::get()))
+                .with_frontier(NoDupFrontier::default());
+            Box::new(solver)
+        },
+        (Some(w), None) => {
+            let mdd = config_builder(pb, relax)
+                .with_max_width(FixedWidth(*w))
+                .into_deep();
+            let solver = ParallelSolver::new(mdd)
+                .with_verbosity(args.verbosity.unwrap_or(0))
+                .with_nb_threads(args.threads.unwrap_or(num_cpus::get()))
+                .with_frontier(NoDupFrontier::default());
+            Box::new(solver)
+        },
+        (None, Some(d)) => {
+            let mdd = config_builder(pb, relax)
+                .with_cutoff(TimeBudget::new(Duration::from_secs(*d)))
+                .into_deep();
+            let solver = ParallelSolver::new(mdd)
+                .with_verbosity(args.verbosity.unwrap_or(0))
+                .with_nb_threads(args.threads.unwrap_or(num_cpus::get()))
+                .with_frontier(NoDupFrontier::default());
+            Box::new(solver)
+        },
+        (None, None) => {
+            let mdd = config_builder(pb, relax)
+                .into_deep();
+            let solver = ParallelSolver::new(mdd)
+                .with_verbosity(args.verbosity.unwrap_or(0))
+                .with_nb_threads(args.threads.unwrap_or(num_cpus::get()))
+                .with_frontier(NoDupFrontier::default());
+            Box::new(solver)
+        }
     }
-}
-fn print_solution(n: usize, solver: &dyn Solver) {
-   if let Some(solution) = solver.best_solution() {
-       println!("Best cost = {}", -(solver.best_value().unwrap() as f32 / 10000.0));
-       let mut perm = vec![0; n];
-       for d in solution.iter() {
-           perm[d.variable.id()] = d.value;
-       }
-       for v in perm {
-           print!("{} ", v);
-       }
-       println!();
-   } else {
-       println!("There is no feasible solution to this problem");
-   }
 }
