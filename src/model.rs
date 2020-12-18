@@ -47,6 +47,12 @@ impl TSPTW {
     }
 }
 
+const EMPTY       : [isize;0]       = [];
+const EMPTY_DOMAIN: Domain<'static> = Domain::Slice(&EMPTY);
+
+const TO_DEPOT    : [isize;1]       = [0];
+const GO_TO_DEPOT : Domain<'static> = Domain::Slice(&TO_DEPOT);
+
 impl Problem<State> for TSPTW {
     fn nb_vars(&self) -> usize {
         self.instance.nb_nodes as usize
@@ -61,20 +67,35 @@ impl Problem<State> for TSPTW {
     }
     
     fn domain_of<'a>(&self, state: &'a State, var: ddo::Variable) -> ddo::Domain<'a> {
-        let mut domain     = vec![];
-        
-        for i in BitSetIter::new(&state.can_visit) {
-            if self.can_move_to(state, i) {
-                domain.push(i as isize);
+        // When we are at the end of the tour, the only possible destination is
+        // to go back to the depot. Any state that violates this constraint is
+        // de facto infeasible.
+        if var.id() == self.nb_vars() - 1 {
+            if self.can_move_to(state, 0){
+                return GO_TO_DEPOT;
+            } else {
+                return EMPTY_DOMAIN;
             }
         }
 
-        // It is only allowed to move back to zero to CLOSE the tour
-        if var.id() == self.nb_vars() - 1 {
-            domain.push(0);
+
+        let mut domain     = vec![];
+        let mut violations = 0; 
+        for i in BitSetIter::new(&state.can_visit) {
+            if self.can_move_to(state, i) {
+                domain.push(i as isize);
+            } else {
+                violations+=1;
+            }
         }
-        
-        Domain::from(domain)
+
+        // If a state violates (cannot go to) more cities than allowed by its
+        // relaxation, it is infeasible. Hence, it must be skipped.
+        if violations > state.tolerance {
+            EMPTY_DOMAIN
+        } else {
+            Domain::from(domain)
+        }
     }
 
     fn transition(&self, state: &State, _vars : &ddo::VarSet, d: ddo::Decision) -> State {
