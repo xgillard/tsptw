@@ -22,7 +22,7 @@
 
 use std::{fs::File, path::Path, time::{Duration, Instant}};
 
-use ddo::{Completion, FixedWidth, NoDupFrontier, ParallelSolver, Problem, Solution, Solver, TimeBudget, config_builder};
+use ddo::{Completion, NbUnassignedWitdh, NoDupFrontier, ParallelSolver, Problem, Solution, Solver, TimeBudget, Times, config_builder};
 use structopt::StructOpt;
 use tsptw::{instance::TSPTWInstance, model::TSPTW, relax::TSPTWRelax};
 
@@ -38,7 +38,12 @@ struct Args {
     /// The verbosity level of what is going to be logged on the console.
     #[structopt(name="verbosity", short, long)]
     verbosity: Option<u8>,
-    /// The maximum width of an mdd layer
+    /// The maximum width of an mdd layer. The value you provide to this 
+    /// argument will serve as a multiplicator to the default. Hence, 
+    /// providing an argument value `width == 5` for an instance having 20 
+    /// "cities" to visit, means that the maximum layer width will be 100.
+    /// By default, the number of nodes equates to the number of unassigned
+    /// variables.
     #[structopt(name="width", short, long)]
     width: Option<usize>,
     /// How many threads do you want to use to solve the problem ?
@@ -126,7 +131,7 @@ fn mk_solver<'a, 'b>(pb: &'a TSPTW, relax: TSPTWRelax<'a>, args: &Args) -> Box<d
     match (&args.width, &args.duration) {
         (Some(w), Some(d)) => {
             let mdd = config_builder(pb, relax)
-                .with_max_width(FixedWidth(*w))
+                .with_max_width(Times(*w, NbUnassignedWitdh))
                 .with_cutoff(TimeBudget::new(Duration::from_secs(*d)))
                 .into_deep();
             let solver = ParallelSolver::new(mdd)
@@ -137,7 +142,7 @@ fn mk_solver<'a, 'b>(pb: &'a TSPTW, relax: TSPTWRelax<'a>, args: &Args) -> Box<d
         },
         (Some(w), None) => {
             let mdd = config_builder(pb, relax)
-                .with_max_width(FixedWidth(*w))
+                .with_max_width(Times(*w, NbUnassignedWitdh))
                 .into_deep();
             let solver = ParallelSolver::new(mdd)
                 .with_verbosity(args.verbosity.unwrap_or(0))
