@@ -111,6 +111,7 @@ impl Relaxation<State> for TSPTWRelax<'_> {
        let mut back_to_depot = usize::max_value();
        let mut violations    = 0_u16;
 
+
        for i in BitSetIter::new(&state.can_visit) {
            cheap.push(i);
            back_to_depot = back_to_depot.min(self.pb.instance.distances[(i, 0)]);
@@ -120,7 +121,7 @@ impl Relaxation<State> for TSPTWRelax<'_> {
            if earliest > latest {
                violations += 1;
            }
-       }
+       }  
 
        if violations > state.tolerance {
            return isize::min_value();
@@ -130,8 +131,30 @@ impl Relaxation<State> for TSPTWRelax<'_> {
        for x in cheap.iter().take(must_visit) {
            mandatory += self.cheapest_edge[*x];
        }
-    
-       -((mandatory + back_to_depot) as isize)
+   
+       // When there is no other city that MUST be visited, we must consider 
+       // the shortest distance between *here* (current position) and the 
+       // depot.
+       if mandatory == 0 {
+           back_to_depot = back_to_depot.min(
+               match &state.position {
+                Position::Node(x) => 
+                    self.pb.instance.distances[(*x as usize, 0)],
+                Position::Virtual(bs) =>
+                    BitSetIter::new(bs).map(|x| self.pb.instance.distances[(x, 0)]).min().unwrap()
+           });
+       }
+
+       // When it is impossible to get back to the depot in time, the current
+       // state is infeasible. So we can give it an infinitely negative ub.
+       let total_distance  = mandatory + back_to_depot;
+       let earliest_arrival= state.elapsed.add(total_distance).earliest();
+       let latest_deadline = self.pb.instance.timewindows[0].latest;
+       if earliest_arrival > latest_deadline {
+           isize::min_value()
+       } else {
+            -(total_distance as isize)
+       }
     }
 
 
