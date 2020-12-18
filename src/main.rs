@@ -83,18 +83,22 @@ fn main() -> Result<(), std::io::Error> {
     Ok(())
 }
 fn print_header() {
-    println!("INSTANCE\tSTATUS\t\tUB\t\tLB\t\tDURATION (seconds)\tSOLUTION");
+    println!("{:40} | {:10} | {:10} | {:10} | {:10} | {}",
+             "INSTANCE", "STATUS", "UB", "LB", "DURATION", "SOLUTION");
 }
 fn print_solution(name: &str, n: usize, completion: Completion, lb: &str, ub: &str, duration: Duration, solution: Option<Solution>) {
-    println!("{}\t{}\t\t{}\t\t{}\t\t{:18.3}\t{}",
+    println!("{:40} | {:10} | {:10} | {:10} | {:10.3} | {}",
              name, 
              status(completion), 
              lb, ub,
              duration.as_secs_f32(),
              solution_to_string(n, solution));
 }
-fn instance_name<P: AsRef<Path>>(name: P) -> String {
-    name.as_ref().file_stem().unwrap().to_str().unwrap().to_string()
+fn instance_name<P: AsRef<Path>>(fname: P) -> String {
+    let name = fname.as_ref().file_name().unwrap().to_str().unwrap();
+    let bench= fname.as_ref().parent().unwrap().file_name().unwrap().to_str().unwrap();
+
+    format!("{}/{}", bench, name)
 }
 fn objective(x: isize) -> String {
     match x {
