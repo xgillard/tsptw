@@ -32,54 +32,67 @@ use tsptw::{instance::TSPTWInstance, model::TSPTW, relax::TSPTWRelax};
 /// The implementation of tsptw is based on 
 /// 'ddo: a generic and efficient framework for MDD-based optimization' (IJCAI20) 
 #[derive(StructOpt)]
-struct Args {
-    /// The path to the TSW+TW instance that needs to be solved.
-    instance: String,
-    /// The verbosity level of what is going to be logged on the console.
-    #[structopt(name="verbosity", short, long)]
-    verbosity: Option<u8>,
-    /// The maximum width of an mdd layer. The value you provide to this 
-    /// argument will serve as a multiplicator to the default. Hence, 
-    /// providing an argument value `width == 5` for an instance having 20 
-    /// "cities" to visit, means that the maximum layer width will be 100.
-    /// By default, the number of nodes equates to the number of unassigned
-    /// variables.
-    #[structopt(name="width", short, long)]
-    width: Option<usize>,
-    /// How many threads do you want to use to solve the problem ?
-    #[structopt(name="threads", short, long)]
-    threads: Option<usize>,
-    /// How long do you want the solver to keep working on your problem ? (in seconds)
-    #[structopt(name="duration", short, long)]
-    duration: Option<u64>,
-    /// Shall we print the header
-    #[structopt(name="header", long)]
-    header : bool,
+enum Args {
+    /// This is the action you want to take in order to actually solve an 
+    /// instance.
+    Solve {
+        /// The path to the TSP+TW instance that needs to be solved.
+        instance: String,
+        /// The verbosity level of what is going to be logged on the console.
+        #[structopt(name="verbosity", short, long)]
+        verbosity: Option<u8>,
+        /// The maximum width of an mdd layer. The value you provide to this 
+        /// argument will serve as a multiplicator to the default. Hence, 
+        /// providing an argument value `width == 5` for an instance having 20 
+        /// "cities" to visit, means that the maximum layer width will be 100.
+        /// By default, the number of nodes equates to the number of unassigned
+        /// variables.
+        #[structopt(name="width", short, long)]
+        width: Option<usize>,
+        /// How many threads do you want to use to solve the problem ?
+        #[structopt(name="threads", short, long)]
+        threads: Option<usize>,
+        /// How long do you want the solver to keep working on your problem ? 
+        /// (in seconds)
+        #[structopt(name="duration", short, long)]
+        duration: Option<u64>,
+        /// Shall we print the header in addition to solving the instance ?
+        #[structopt(name="header", long)]
+        header: bool
+    },
+    /// Use this command if you only intend to print the solution header.
+    PrintHeader
 }
 
 fn main() -> Result<(), std::io::Error> {
     let args     = Args::from_args();
+    match args {
+        Args::PrintHeader => {
+                print_header();
+        },
+        Args::Solve{instance, verbosity, width, threads, duration, header} => {
+            let inst     = TSPTWInstance::from(File::open(&instance)?);
+            let pb       = TSPTW::new(inst);
+            let relax    = TSPTWRelax::new(&pb);
+            let mut solvr= mk_solver(&pb, relax, verbosity, width, threads, duration);
 
-    let inst     = TSPTWInstance::from(File::open(&args.instance)?);
-    let pb       = TSPTW::new(inst);
-    let relax    = TSPTWRelax::new(&pb);
-    let mut solvr= mk_solver(&pb, relax, &args);
+            let start    = Instant::now();
+            let outcome  = solvr.as_mut().maximize();
+            let finish   = Instant::now();
 
-    let start    = Instant::now();
-    let outcome  = solvr.as_mut().maximize();
-    let finish   = Instant::now();
+            let instance = instance_name(&instance);
+            let nb_vars  = pb.nb_vars();
+            let lb       = objective(solvr.as_ref().best_lower_bound());
+            let ub       = objective(solvr.as_ref().best_upper_bound());
+            let solution = solvr.as_ref().best_solution();
+            let duration = finish - start;
 
-    let instance = instance_name(&args.instance);
-    let nb_vars  = pb.nb_vars();
-    let lb       = objective(solvr.as_ref().best_lower_bound());
-    let ub       = objective(solvr.as_ref().best_upper_bound());
-    let solution = solvr.as_ref().best_solution();
-    let duration = finish - start;
-
-    if args.header {
-        print_header();
-    }
-    print_solution(&instance, nb_vars, outcome, &lb, &ub, duration, solution);
+            if header {
+                print_header();
+            }
+            print_solution(&instance, nb_vars, outcome, &lb, &ub, duration, solution);
+        }
+    };
     Ok(())
 }
 fn print_header() {
@@ -131,16 +144,20 @@ fn solution_to_string(nb_vars: usize, solution: Option<Solution>) -> String {
     }
 }
 
-fn mk_solver<'a, 'b>(pb: &'a TSPTW, relax: TSPTWRelax<'a>, args: &Args) -> Box<dyn Solver + 'a> {
-    match (&args.width, &args.duration) {
+fn mk_solver<'a, 'b>(pb: &'a TSPTW, relax: TSPTWRelax<'a>, 
+                     verbosity: Option<u8>, 
+                     width:     Option<usize>,
+                     threads:   Option<usize>,
+                     duration:  Option<u64>) -> Box<dyn Solver + 'a> {
+    match (&width, &duration) {
         (Some(w), Some(d)) => {
             let mdd = config_builder(pb, relax)
                 .with_max_width(Times(*w, NbUnassignedWitdh))
                 .with_cutoff(TimeBudget::new(Duration::from_secs(*d)))
                 .into_deep();
             let solver = ParallelSolver::new(mdd)
-                .with_verbosity(args.verbosity.unwrap_or(0))
-                .with_nb_threads(args.threads.unwrap_or(num_cpus::get()))
+                .with_verbosity(verbosity.unwrap_or(0))
+                .with_nb_threads(threads.unwrap_or(num_cpus::get()))
                 .with_frontier(NoDupFrontier::default());
             Box::new(solver)
         },
@@ -149,8 +166,8 @@ fn mk_solver<'a, 'b>(pb: &'a TSPTW, relax: TSPTWRelax<'a>, args: &Args) -> Box<d
                 .with_max_width(Times(*w, NbUnassignedWitdh))
                 .into_deep();
             let solver = ParallelSolver::new(mdd)
-                .with_verbosity(args.verbosity.unwrap_or(0))
-                .with_nb_threads(args.threads.unwrap_or(num_cpus::get()))
+                .with_verbosity(verbosity.unwrap_or(0))
+                .with_nb_threads(threads.unwrap_or(num_cpus::get()))
                 .with_frontier(NoDupFrontier::default());
             Box::new(solver)
         },
@@ -159,8 +176,8 @@ fn mk_solver<'a, 'b>(pb: &'a TSPTW, relax: TSPTWRelax<'a>, args: &Args) -> Box<d
                 .with_cutoff(TimeBudget::new(Duration::from_secs(*d)))
                 .into_deep();
             let solver = ParallelSolver::new(mdd)
-                .with_verbosity(args.verbosity.unwrap_or(0))
-                .with_nb_threads(args.threads.unwrap_or(num_cpus::get()))
+                .with_verbosity(verbosity.unwrap_or(0))
+                .with_nb_threads(threads.unwrap_or(num_cpus::get()))
                 .with_frontier(NoDupFrontier::default());
             Box::new(solver)
         },
@@ -168,8 +185,8 @@ fn mk_solver<'a, 'b>(pb: &'a TSPTW, relax: TSPTWRelax<'a>, args: &Args) -> Box<d
             let mdd = config_builder(pb, relax)
                 .into_deep();
             let solver = ParallelSolver::new(mdd)
-                .with_verbosity(args.verbosity.unwrap_or(0))
-                .with_nb_threads(args.threads.unwrap_or(num_cpus::get()))
+                .with_verbosity(verbosity.unwrap_or(0))
+                .with_nb_threads(threads.unwrap_or(num_cpus::get()))
                 .with_frontier(NoDupFrontier::default());
             Box::new(solver)
         }
