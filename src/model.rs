@@ -37,12 +37,12 @@ pub struct TSPTW {
 impl TSPTW {
     pub fn new(inst: TSPTWInstance) -> Self {
         let mut state = State {
-            position : Position::Node(0),
-            elapsed  : ElapsedTime::FixedAmount{duration: 0},
-            can_visit: BitSet::new(inst.nb_nodes as usize).not(),
-            tolerance: 0,
+            position  : Position::Node(0),
+            elapsed   : ElapsedTime::FixedAmount{duration: 0},
+            must_visit: BitSet::new(inst.nb_nodes as usize).not(),
+            maybe_visit: None
         };
-        state.can_visit.set(0, false);
+        state.must_visit.set(0, false);
         Self { instance: inst, initial: state }
     }
 }
@@ -80,35 +80,43 @@ impl Problem<State> for TSPTW {
 
 
         let mut domain     = vec![];
-        let mut violations = 0; 
-        for i in BitSetIter::new(&state.can_visit) {
+        for i in BitSetIter::new(&state.must_visit) {
             if self.can_move_to(state, i) {
                 domain.push(i as isize);
             } else {
-                violations+=1;
+                return EMPTY_DOMAIN;
             }
         }
 
-        // If a state violates (cannot go to) more cities than allowed by its
-        // relaxation, it is infeasible. Hence, it must be skipped.
-        if violations > state.tolerance {
-            EMPTY_DOMAIN
-        } else {
-            Domain::from(domain)
+        // Add those that can possibly be visited
+        if let Some(maybe_visit) = &state.maybe_visit {
+            for i in BitSetIter::new(maybe_visit) {
+                if self.can_move_to(state, i) {
+                    domain.push(i as isize);
+                }
+            }
         }
+
+        Domain::from(domain)
     }
 
     fn transition(&self, state: &State, _vars : &ddo::VarSet, d: ddo::Decision) -> State {
-        let mut remaining = state.can_visit.clone();
+        // if it is a true move
+        let mut remaining = state.must_visit.clone();
         remaining.set(d.value as usize, false);
+        // if it is a possible move
+        let mut maybes = state.maybe_visit.clone();
+        if let Some(maybe) = maybes.as_mut() {
+            maybe.set(d.value as usize, false);
+        }
 
         let time = self.arrival_time(state, d.value as usize);
 
         State {
             position : Position::Node(d.value as u16),
             elapsed  : time,
-            can_visit: remaining,
-            tolerance: state.tolerance, 
+            must_visit: remaining,
+            maybe_visit: maybes,
         }
     }
 

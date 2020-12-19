@@ -58,12 +58,13 @@ impl <'a> TSPTWRelax<'a> {
 impl Relaxation<State> for TSPTWRelax<'_> {
     fn merge_states(&self, states: &mut dyn Iterator<Item=&State>) -> State {
         let mut position  = BitSet::new(self.pb.instance.nb_nodes as usize);
-        let mut can_visit = BitSet::new(self.pb.instance.nb_nodes as usize);
+
+        let mut all_must  = BitSet::new(self.pb.instance.nb_nodes as usize);
         let mut all_agree = BitSet::new(self.pb.instance.nb_nodes as usize).not();
+        let mut all_maybe = BitSet::new(self.pb.instance.nb_nodes as usize);
 
         let mut earliest  = usize::max_value();
         let mut latest    = usize::min_value();
-        let mut max_tol   = 0_16;
 
         for state in states {
             match &state.position {
@@ -82,20 +83,22 @@ impl Relaxation<State> for TSPTWRelax<'_> {
                 }
             };
 
-            all_agree &= &state.can_visit;
-            can_visit |= &state.can_visit;
+            all_agree &= &state.must_visit;
+            all_must  |= &state.must_visit;
 
-            max_tol = max_tol.max(state.tolerance);
+            if let Some(maybe) = &state.maybe_visit {
+                all_maybe |= maybe;
+            }
         }
 
-        let tolerance = can_visit.count_ones() - all_agree.count_ones();
-        let tolerance = tolerance.max(max_tol as u32) as u16;
+        let maybe = (all_maybe | &all_must) ^ (&all_agree);
+        let count = maybe.count_ones();
 
         State {
-            position: Position::Virtual(position),
-            elapsed : ElapsedTime::FuzzyAmount{earliest, latest},
-            can_visit,
-            tolerance,
+            position   : Position::Virtual(position),
+            elapsed    : ElapsedTime::FuzzyAmount{earliest, latest},
+            must_visit : all_agree,
+            maybe_visit: if count > 0 {Some(maybe)} else {None},
         }
     }
 
@@ -105,33 +108,20 @@ impl Relaxation<State> for TSPTWRelax<'_> {
 
 
     fn estimate(&self, state  : &State) -> isize {
-       let must_visit        = (state.can_visit.count_ones() - state.tolerance as u32) as usize;
-       let mut cheap         = vec![];
        let mut mandatory     = 0;
        let mut back_to_depot = usize::max_value();
-       let mut violations    = 0_u16;
 
-
-       for i in BitSetIter::new(&state.can_visit) {
-           cheap.push(i);
+       for i in BitSetIter::new(&state.must_visit) {
+           mandatory += self.cheapest_edge[i];
            back_to_depot = back_to_depot.min(self.pb.instance.distances[(i, 0)]);
 
            let latest   = self.pb.instance.timewindows[i].latest;
            let earliest = state.elapsed.add(self.cheapest_edge[i]).earliest();
            if earliest > latest {
-               violations += 1;
+               return isize::min_value();
            }
-       }  
-
-       if violations > state.tolerance {
-           return isize::min_value();
        }
 
-       cheap.sort_unstable_by_key(|x| self.cheapest_edge[*x]);
-       for x in cheap.iter().take(must_visit) {
-           mandatory += self.cheapest_edge[*x];
-       }
-   
        // When there is no other city that MUST be visited, we must consider 
        // the shortest distance between *here* (current position) and the 
        // depot.

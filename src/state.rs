@@ -37,9 +37,8 @@ pub struct State {
     /// The amount of time which has elapsed since the salesman left the depot
     pub elapsed  : ElapsedTime,
     /// These are the nodes he still has to visit
-    pub can_visit: BitSet,
-
-    pub tolerance: u16,
+    pub must_visit : BitSet,
+    pub maybe_visit: Option<BitSet>
 }
 
 /// This represents the postition of the salesman in his tour.
