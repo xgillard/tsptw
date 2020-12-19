@@ -72,7 +72,7 @@ fn rc_203_2_txt() {
 
 #[test]
 fn rc_203_3_txt() {
-    assert_eq!(921.44, solve("rc_203.3.txt"));
+    assert_eq!(921.4397, solve("rc_203.3.txt"));
 }
 
 
@@ -96,7 +96,7 @@ fn rc_204_2_txt() {
 
 #[test]
 fn rc_204_3_txt() {
-    assert_eq!(455.03, solve("rc_204.3.txt"));
+    assert_eq!(455.0315, solve("rc_204.3.txt"));
 }
 
 
@@ -132,13 +132,13 @@ fn rc_206_1_txt() {
 
 #[test]
 fn rc_206_2_txt() {
-    assert_eq!(870.49, solve("rc_206.2.txt"));
+    assert_eq!(870.4875, solve("rc_206.2.txt"));
 }
 
 
 #[test]
 fn rc_206_3_txt() {
-    assert_eq!(650.59, solve("rc_206.3.txt"));
+    assert_eq!(650.5942, solve("rc_206.3.txt"));
 }
 
 
@@ -150,7 +150,7 @@ fn rc_206_4_txt() {
 
 #[test]
 fn rc_207_1_txt() {
-    assert_eq!(804.67, solve("rc_207.1.txt"));
+    assert_eq!(804.6735, solve("rc_207.1.txt"));
 }
 
 
