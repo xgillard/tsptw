@@ -1,6 +1,6 @@
-use std::{fs::File, path::PathBuf};
+use std::{fs::File, path::PathBuf, time::Duration};
 
-use ddo::{FixedWidth, NoDupFrontier, ParallelSolver, Solver, config_builder};
+use ddo::{NbUnassignedWitdh, NoDupFrontier, ParallelSolver, Solver, TimeBudget, Times, config_builder};
 use tsptw::{instance::TSPTWInstance, model::TSPTW, relax::TSPTWRelax};
 
 
@@ -12,18 +12,20 @@ fn locate(id: &str) -> PathBuf {
         .join(id)
 }
 
-
+const TIMEOUT : u64 = 95;
 fn mk_solver<'a, 'b>(pb: &'a TSPTW, relax: TSPTWRelax<'a>, width: Option<usize>, threads: Option<usize>) -> Box<dyn Solver + 'a> {
     if let Some(w) = width {
         let mdd = config_builder(pb, relax)
-            .with_max_width(FixedWidth(w))
+            .with_max_width(Times(w, NbUnassignedWitdh))
+            .with_cutoff(TimeBudget::new(Duration::from_secs(TIMEOUT)))
             .into_deep();
         let solver = ParallelSolver::new(mdd)
             .with_nb_threads(threads.unwrap_or(num_cpus::get()))
             .with_frontier(NoDupFrontier::default());
         Box::new(solver)
     } else {
-        let conf = config_builder(pb, relax);
+        let conf = config_builder(pb, relax)
+            .with_cutoff(TimeBudget::new(Duration::from_secs(TIMEOUT)));
         let mdd  = conf.into_deep();
         let solver = ParallelSolver::new(mdd)
             .with_nb_threads(threads.unwrap_or(num_cpus::get()))

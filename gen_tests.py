@@ -11,7 +11,7 @@ def mk_test(name, sol):
    return TEMPLATE.format(name.lower().replace(".", "_"), sol, name)
 
 
-with open("sol_langevin.txt") as f:
+with open("sol_solomon_potvin_bengio.txt") as f:
     for line in f.readlines():
         toks = line.split()
         if len(toks) >= 2: 
