@@ -26,16 +26,19 @@ use bitset_fixed::BitSet;
 use ddo::{BitSetIter, Problem, Relaxation};
 
 use crate::{model::TSPTW, state::{ElapsedTime, Position, State}};
+use std::cell::RefCell;
 
 #[derive(Clone)]
 pub struct TSPTWRelax<'a> {
     pb : &'a TSPTW,
-    cheapest_edge: Vec<usize>
+    cheapest_edge: Vec<usize>,
+    helper: RefCell<RelaxHelper>,
 }
 impl <'a> TSPTWRelax<'a> {
     pub fn new(pb: &'a TSPTW) -> Self {
         let cheapest_edge = Self::compute_cheapest_edges(pb);
-        Self{pb, cheapest_edge}
+        let helper = RefCell::new(RelaxHelper::new(pb.nb_vars()));
+        Self{pb, cheapest_edge, helper}
     }
 
     fn compute_cheapest_edges(pb: &'a TSPTW) -> Vec<usize> {
@@ -54,51 +57,106 @@ impl <'a> TSPTWRelax<'a> {
         cheapest
     }
 }
+#[derive(Clone)]
+struct RelaxHelper {
+    position : BitSet,
+    earliest : usize,
+    latest   : usize,
+    all_must : BitSet,
+    all_agree: BitSet,
+    all_maybe: BitSet
+}
+impl RelaxHelper {
+    fn new(n: usize) -> Self {
+        Self {
+            position : BitSet::new(n),
+            earliest : usize::max_value(),
+            latest   : usize::min_value(),
+            all_must : BitSet::new(n),
+            all_agree: BitSet::new(n).not(),
+            all_maybe: BitSet::new(n),
+        }
+    }
+    fn clear(&mut self) {
+        self.earliest = usize::max_value();
+        self.latest   = usize::min_value();
+        self.position .buffer_mut().iter_mut().for_each(|x| *x = 0);
+        self.all_must .buffer_mut().iter_mut().for_each(|x| *x = 0);
+        self.all_agree.buffer_mut().iter_mut().for_each(|x| *x = u64::max_value());
+        self.all_maybe.buffer_mut().iter_mut().for_each(|x| *x = 0);
+    }
+    fn track_position(&mut self, pos: &Position) {
+        match pos {
+            Position::Node(x)     => self.position.set(*x as usize, true),
+            Position::Virtual(xs) => self.position |= xs,
+        };
+    }
+    fn track_elapsed(&mut self, elapsed: ElapsedTime) {
+        match elapsed {
+            ElapsedTime::FixedAmount{duration} => {
+                self.earliest = self.earliest.min(duration);
+                self.latest   = self.latest.max(duration);
+            },
+            ElapsedTime::FuzzyAmount{earliest: ex, latest: lx} => {
+                self.earliest = self.earliest.min(ex);
+                self.latest   = self.latest.max(lx);
+            }
+        };
+    }
+    fn track_must_visit(&mut self, bs: &BitSet) {
+        self.all_agree &= bs;
+        self.all_must  |= bs;
+    }
+    fn track_maybe(&mut self, bs: &Option<BitSet>) {
+        if let Some(bs) = bs.as_ref() {
+            self.all_maybe |= bs;
+        }
+    }
+
+    fn get_position(&self) -> Position {
+        Position::Virtual(self.position.clone())
+    }
+    fn get_elapsed(&self) -> ElapsedTime {
+        if self.earliest == self.latest {
+            ElapsedTime::FixedAmount {duration: self.earliest}
+        } else {
+            ElapsedTime::FuzzyAmount {earliest: self.earliest, latest: self.latest}
+        }
+    }
+    fn get_must_visit(&self) -> BitSet {
+        self.all_agree.clone()
+    }
+    fn get_maybe_visit(&self)-> Option<BitSet> {
+        let mut maybe = self.all_maybe.clone(); // three lines: faster because it is in-place
+        maybe |= &self.all_must;
+        maybe ^= &self.all_agree;
+
+        let count = maybe.count_ones();
+        if count > 0 {
+            Some(maybe)
+        } else {
+            None
+        }
+    }
+}
 
 impl Relaxation<State> for TSPTWRelax<'_> {
     fn merge_states(&self, states: &mut dyn Iterator<Item=&State>) -> State {
-        let mut position  = BitSet::new(self.pb.instance.nb_nodes as usize);
-
-        let mut all_must  = BitSet::new(self.pb.instance.nb_nodes as usize);
-        let mut all_agree = BitSet::new(self.pb.instance.nb_nodes as usize).not();
-        let mut all_maybe = BitSet::new(self.pb.instance.nb_nodes as usize);
-
-        let mut earliest  = usize::max_value();
-        let mut latest    = usize::min_value();
+        let mut helper = self.helper.borrow_mut();
+        helper.clear();
 
         for state in states {
-            match &state.position {
-                Position::Node(x)     => position.set(*x as usize, true),
-                Position::Virtual(xs) => position |= xs,
-            };
-
-            match state.elapsed {
-                ElapsedTime::FixedAmount{duration} => { 
-                    earliest = earliest.min(duration);
-                    latest   = latest.max(duration);
-                },
-                ElapsedTime::FuzzyAmount{earliest: ex, latest: lx} => {
-                    earliest = earliest.min(ex);
-                    latest   = latest.max(lx);
-                }
-            };
-
-            all_agree &= &state.must_visit;
-            all_must  |= &state.must_visit;
-
-            if let Some(maybe) = &state.maybe_visit {
-                all_maybe |= maybe;
-            }
+            helper.track_position(&state.position);
+            helper.track_elapsed(state.elapsed);
+            helper.track_must_visit(&state.must_visit);
+            helper.track_maybe(&state.maybe_visit);
         }
 
-        let maybe = (all_maybe | &all_must) ^ (&all_agree);
-        let count = maybe.count_ones();
-
         State {
-            position   : Position::Virtual(position),
-            elapsed    : ElapsedTime::FuzzyAmount{earliest, latest},
-            must_visit : all_agree,
-            maybe_visit: if count > 0 {Some(maybe)} else {None},
+            position   : helper.get_position(),
+            elapsed    : helper.get_elapsed(),
+            must_visit : helper.get_must_visit(),
+            maybe_visit: helper.get_maybe_visit(),
         }
     }
 
