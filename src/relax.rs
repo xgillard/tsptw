@@ -201,10 +201,23 @@ impl Relaxation<State> for TSPTWRelax<'_> {
        }
 
        if let Some(maybes) = state.maybe_visit.as_ref() {
+            let mut violations = 0;
+
             for i in BitSetIter::new(maybes) {
                helper.temp.push(self.cheapest_edge[i]);
                back_to_depot = back_to_depot.min(self.pb.instance.distances[(i, 0)]);
+            
+               let latest   = self.pb.instance.timewindows[i].latest;
+               let earliest = state.elapsed.add(self.cheapest_edge[i]).earliest();
+               if earliest > latest {
+                   violations += 1;
+               }
             }
+
+            if helper.temp.len() - violations < complete_tour {
+                return isize::min_value();
+            }
+
             helper.temp.sort_unstable();
             mandatory += helper.temp.iter().copied().take(complete_tour).sum::<usize>();
        }
