@@ -194,7 +194,7 @@ impl Relaxation<State> for TSPTWRelax<'_> {
            back_to_depot = back_to_depot.min(self.pb.instance.distances[(i, 0)]);
 
            let latest   = self.pb.instance.timewindows[i].latest;
-           let earliest = state.elapsed.add(self.cheapest_edge[i]).earliest();
+           let earliest = state.elapsed.add_duration(self.cheapest_edge[i]).earliest();
            if earliest > latest {
                return isize::min_value();
            }
@@ -208,7 +208,7 @@ impl Relaxation<State> for TSPTWRelax<'_> {
                back_to_depot = back_to_depot.min(self.pb.instance.distances[(i, 0)]);
             
                let latest   = self.pb.instance.timewindows[i].latest;
-               let earliest = state.elapsed.add(self.cheapest_edge[i]).earliest();
+               let earliest = state.elapsed.add_duration(self.cheapest_edge[i]).earliest();
                if earliest > latest {
                    violations += 1;
                }
@@ -238,7 +238,7 @@ impl Relaxation<State> for TSPTWRelax<'_> {
        // When it is impossible to get back to the depot in time, the current
        // state is infeasible. So we can give it an infinitely negative ub.
        let total_distance  = mandatory + back_to_depot;
-       let earliest_arrival= state.elapsed.add(total_distance).earliest();
+       let earliest_arrival= state.elapsed.add_duration(total_distance).earliest();
        let latest_deadline = self.pb.instance.timewindows[0].latest;
        if earliest_arrival > latest_deadline {
            isize::min_value()

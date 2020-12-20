@@ -150,15 +150,15 @@ impl Problem<State> for TSPTW {
 impl TSPTW {
     pub fn can_move_to(&self, state: &State, j: usize) -> bool {
         let twj         = self.instance.timewindows[j];
-        let min_arrival = state.elapsed.add(self.min_distance_to(state, j));
+        let min_arrival = state.elapsed.add_duration(self.min_distance_to(state, j));
         match min_arrival {
             ElapsedTime::FixedAmount{duration}     => duration <= twj.latest,
             ElapsedTime::FuzzyAmount{earliest, ..} => earliest <= twj.latest,
         }
     }
     fn arrival_time(&self, state: &State, j: usize) -> ElapsedTime {
-       let min_arrival = state.elapsed.add(self.min_distance_to(state, j));
-       let max_arrival = state.elapsed.add(self.max_distance_to(state, j));
+       let min_arrival = state.elapsed.add_duration(self.min_distance_to(state, j));
+       let max_arrival = state.elapsed.add_duration(self.max_distance_to(state, j));
 
        let min_arrival = match min_arrival {
            ElapsedTime::FixedAmount{duration}     => duration,

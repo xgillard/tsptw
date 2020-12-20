@@ -69,7 +69,7 @@ pub enum ElapsedTime {
     }
 }
 impl ElapsedTime {
-    pub fn add(self, d: usize) -> Self {
+    pub fn add_duration(self, d: usize) -> Self {
         match self {
             ElapsedTime::FixedAmount{duration} => 
                 ElapsedTime::FixedAmount{duration: duration + d},
