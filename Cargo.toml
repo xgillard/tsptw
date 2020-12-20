@@ -5,7 +5,7 @@ authors = ["Xavier Gillard <xavier.gillard@uclouvain.be>"]
 edition = "2018"
 
 [dependencies]
-ddo              = {version = "0.3.9", path="../ddo"}
+ddo              = "0.3.9"
 bitset-fixed     = "0.1.0"
 #
 structopt        = "0.3.21"

@@ -96,7 +96,7 @@ fn main() -> Result<(), std::io::Error> {
     Ok(())
 }
 fn print_header() {
-    println!("{:40} | {:10} | {:10} | {:10} | {:10} | {}",
+    println!("{:40} | {:10} | {:10} | {:10} | {:10} | {:8}",
              "INSTANCE", "STATUS", "UB", "LB", "DURATION", "SOLUTION");
 }
 fn print_solution(name: &str, n: usize, completion: Completion, lb: &str, ub: &str, duration: Duration, solution: Option<Solution>) {
@@ -144,7 +144,7 @@ fn solution_to_string(nb_vars: usize, solution: Option<Solution>) -> String {
     }
 }
 
-fn mk_solver<'a, 'b>(pb: &'a TSPTW, relax: TSPTWRelax<'a>, 
+fn mk_solver<'a>(pb: &'a TSPTW, relax: TSPTWRelax<'a>, 
                      verbosity: Option<u8>, 
                      width:     Option<usize>,
                      threads:   Option<usize>,
@@ -157,7 +157,7 @@ fn mk_solver<'a, 'b>(pb: &'a TSPTW, relax: TSPTWRelax<'a>,
                 .into_deep();
             let solver = ParallelSolver::new(mdd)
                 .with_verbosity(verbosity.unwrap_or(0))
-                .with_nb_threads(threads.unwrap_or(num_cpus::get()))
+                .with_nb_threads(threads.unwrap_or_else(num_cpus::get))
                 .with_frontier(NoDupFrontier::default());
             Box::new(solver)
         },
@@ -167,7 +167,7 @@ fn mk_solver<'a, 'b>(pb: &'a TSPTW, relax: TSPTWRelax<'a>,
                 .into_deep();
             let solver = ParallelSolver::new(mdd)
                 .with_verbosity(verbosity.unwrap_or(0))
-                .with_nb_threads(threads.unwrap_or(num_cpus::get()))
+                .with_nb_threads(threads.unwrap_or_else(num_cpus::get))
                 .with_frontier(NoDupFrontier::default());
             Box::new(solver)
         },
@@ -177,7 +177,7 @@ fn mk_solver<'a, 'b>(pb: &'a TSPTW, relax: TSPTWRelax<'a>,
                 .into_deep();
             let solver = ParallelSolver::new(mdd)
                 .with_verbosity(verbosity.unwrap_or(0))
-                .with_nb_threads(threads.unwrap_or(num_cpus::get()))
+                .with_nb_threads(threads.unwrap_or_else(num_cpus::get))
                 .with_frontier(NoDupFrontier::default());
             Box::new(solver)
         },
@@ -186,7 +186,7 @@ fn mk_solver<'a, 'b>(pb: &'a TSPTW, relax: TSPTWRelax<'a>,
                 .into_deep();
             let solver = ParallelSolver::new(mdd)
                 .with_verbosity(verbosity.unwrap_or(0))
-                .with_nb_threads(threads.unwrap_or(num_cpus::get()))
+                .with_nb_threads(threads.unwrap_or_else(num_cpus::get))
                 .with_frontier(NoDupFrontier::default());
             Box::new(solver)
         }

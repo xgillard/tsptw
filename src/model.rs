@@ -176,24 +176,21 @@ impl TSPTW {
        // In order to account for the possible waiting time, we need to adjust
        // the earliest arrival time
        let twj = self.instance.timewindows[j];
-       let arrival_time = 
-           match arrival_time {
-              ElapsedTime::FixedAmount{duration} => {
-                  ElapsedTime::FixedAmount{duration: duration.max(twj.earliest)}
-              },
-              ElapsedTime::FuzzyAmount{mut earliest, mut latest} => {
-                earliest = earliest.max(twj.earliest);
-                latest   = latest.min(twj.latest);
+       match arrival_time {
+          ElapsedTime::FixedAmount{duration} => {
+              ElapsedTime::FixedAmount{duration: duration.max(twj.earliest)}
+          },
+          ElapsedTime::FuzzyAmount{mut earliest, mut latest} => {
+            earliest = earliest.max(twj.earliest);
+            latest   = latest.min(twj.latest);
 
-                if earliest.eq(&latest) {
-                    ElapsedTime::FixedAmount{duration: earliest}
-                } else {
-                    ElapsedTime::FuzzyAmount{earliest, latest}
-                }
-              },
-          };
-
-       arrival_time
+            if earliest.eq(&latest) {
+                ElapsedTime::FixedAmount{duration: earliest}
+            } else {
+                ElapsedTime::FuzzyAmount{earliest, latest}
+            }
+          },
+      }
     }
     fn min_distance_to(&self, state: &State, j: usize) -> usize {
         match &state.position {
