@@ -59,31 +59,40 @@ impl <'a> TSPTWRelax<'a> {
 }
 #[derive(Clone)]
 struct RelaxHelper {
+    depth    : u16,
     position : BitSet,
     earliest : usize,
     latest   : usize,
     all_must : BitSet,
     all_agree: BitSet,
-    all_maybe: BitSet
+    all_maybe: BitSet,
+    temp     : Vec<usize>,
 }
 impl RelaxHelper {
     fn new(n: usize) -> Self {
         Self {
+            depth    : 0_u16,
             position : BitSet::new(n),
             earliest : usize::max_value(),
             latest   : usize::min_value(),
             all_must : BitSet::new(n),
             all_agree: BitSet::new(n).not(),
             all_maybe: BitSet::new(n),
+            temp     : vec![],
         }
     }
     fn clear(&mut self) {
+        self.depth    = 0_u16;
         self.earliest = usize::max_value();
         self.latest   = usize::min_value();
         self.position .buffer_mut().iter_mut().for_each(|x| *x = 0);
         self.all_must .buffer_mut().iter_mut().for_each(|x| *x = 0);
         self.all_agree.buffer_mut().iter_mut().for_each(|x| *x = u64::max_value());
         self.all_maybe.buffer_mut().iter_mut().for_each(|x| *x = 0);
+        //self.temp.clear();
+    }
+    fn track_depth(&mut self, depth: u16) {
+        self.depth = self.depth.max(depth);
     }
     fn track_position(&mut self, pos: &Position) {
         match pos {
@@ -113,6 +122,9 @@ impl RelaxHelper {
         }
     }
 
+    fn get_depth(&self) -> u16 {
+        self.depth
+    }
     fn get_position(&self) -> Position {
         Position::Virtual(self.position.clone())
     }
@@ -146,6 +158,7 @@ impl Relaxation<State> for TSPTWRelax<'_> {
         helper.clear();
 
         for state in states {
+            helper.track_depth(state.depth);
             helper.track_position(&state.position);
             helper.track_elapsed(state.elapsed);
             helper.track_must_visit(&state.must_visit);
@@ -153,6 +166,7 @@ impl Relaxation<State> for TSPTWRelax<'_> {
         }
 
         State {
+            depth      : helper.get_depth(),
             position   : helper.get_position(),
             elapsed    : helper.get_elapsed(),
             must_visit : helper.get_must_visit(),
@@ -166,10 +180,16 @@ impl Relaxation<State> for TSPTWRelax<'_> {
 
 
     fn estimate(&self, state  : &State) -> isize {
+       let mut complete_tour = self.pb.nb_vars() - state.depth as usize;
+
+       let mut helper        = self.helper.borrow_mut(); 
        let mut mandatory     = 0;
        let mut back_to_depot = usize::max_value();
+       
+       helper.temp.clear();
 
        for i in BitSetIter::new(&state.must_visit) {
+           complete_tour -= 1;
            mandatory += self.cheapest_edge[i];
            back_to_depot = back_to_depot.min(self.pb.instance.distances[(i, 0)]);
 
@@ -178,6 +198,15 @@ impl Relaxation<State> for TSPTWRelax<'_> {
            if earliest > latest {
                return isize::min_value();
            }
+       }
+
+       if let Some(maybes) = state.maybe_visit.as_ref() {
+            for i in BitSetIter::new(maybes) {
+               helper.temp.push(self.cheapest_edge[i]);
+               back_to_depot = back_to_depot.min(self.pb.instance.distances[(i, 0)]);
+            }
+            helper.temp.sort_unstable();
+            mandatory += helper.temp.iter().copied().take(complete_tour).sum::<usize>();
        }
 
        // When there is no other city that MUST be visited, we must consider 

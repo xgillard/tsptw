@@ -38,7 +38,11 @@ pub struct State {
     pub elapsed  : ElapsedTime,
     /// These are the nodes he still has to visit
     pub must_visit : BitSet,
-    pub maybe_visit: Option<BitSet>
+    /// These are the nodes he still might visit but is not forced to
+    pub maybe_visit: Option<BitSet>,
+    /// This is the 'depth' in the tour, the number of cities that have already
+    /// been visited
+    pub depth: u16
 }
 
 /// This represents the postition of the salesman in his tour.

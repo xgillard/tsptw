@@ -40,7 +40,8 @@ impl TSPTW {
             position  : Position::Node(0),
             elapsed   : ElapsedTime::FixedAmount{duration: 0},
             must_visit: BitSet::new(inst.nb_nodes as usize).not(),
-            maybe_visit: None
+            maybe_visit: None,
+            depth : 0
         };
         state.must_visit.set(0, false);
         Self { instance: inst, initial: state }
@@ -66,11 +67,11 @@ impl Problem<State> for TSPTW {
         0
     }
     
-    fn domain_of<'a>(&self, state: &'a State, var: ddo::Variable) -> ddo::Domain<'a> {
+    fn domain_of<'a>(&self, state: &'a State, _var: ddo::Variable) -> ddo::Domain<'a> {
         // When we are at the end of the tour, the only possible destination is
         // to go back to the depot. Any state that violates this constraint is
         // de facto infeasible.
-        if var.id() == self.nb_vars() - 1 {
+        if state.depth as usize == self.nb_vars() - 1 {
             if self.can_move_to(state, 0){
                 return GO_TO_DEPOT;
             } else {
@@ -117,6 +118,7 @@ impl Problem<State> for TSPTW {
             elapsed  : time,
             must_visit: remaining,
             maybe_visit: maybes,
+            depth: state.depth + 1
         }
     }
 
