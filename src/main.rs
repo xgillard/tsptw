@@ -22,9 +22,9 @@
 
 use std::{fs::File, path::Path, time::{Duration, Instant}};
 
-use ddo::{Completion, NbUnassignedWitdh, NoDupFrontier, ParallelSolver, Problem, Solution, Solver, TimeBudget, Times, config_builder};
+use ddo::{Completion, NoDupFrontier, ParallelSolver, Problem, Solution, Solver, TimeBudget, Times, config_builder};
 use structopt::StructOpt;
-use tsptw::{instance::TSPTWInstance, model::TSPTW, relax::TSPTWRelax};
+use tsptw::{instance::TSPTWInstance, model::TSPTW, relax::TSPTWRelax, heuristics::{LoadVarsFromDepth, IncreasingWithDepth}};
 
 /// TSPTW is a solver based on branch-and-bound mdd which solves the travelling
 /// salesman problem with time windows to optimality. 
@@ -152,7 +152,8 @@ fn mk_solver<'a>(pb: &'a TSPTW, relax: TSPTWRelax<'a>,
     match (&width, &duration) {
         (Some(w), Some(d)) => {
             let mdd = config_builder(pb, relax)
-                .with_max_width(Times(*w, NbUnassignedWitdh))
+                .with_load_vars(LoadVarsFromDepth::new(pb))
+                .with_max_width(Times(*w, IncreasingWithDepth::new(pb)))
                 .with_cutoff(TimeBudget::new(Duration::from_secs(*d)))
                 .into_deep();
             let solver = ParallelSolver::new(mdd)
@@ -163,7 +164,8 @@ fn mk_solver<'a>(pb: &'a TSPTW, relax: TSPTWRelax<'a>,
         },
         (Some(w), None) => {
             let mdd = config_builder(pb, relax)
-                .with_max_width(Times(*w, NbUnassignedWitdh))
+                .with_load_vars(LoadVarsFromDepth::new(pb))
+                .with_max_width(Times(*w, IncreasingWithDepth::new(pb)))
                 .into_deep();
             let solver = ParallelSolver::new(mdd)
                 .with_verbosity(verbosity.unwrap_or(0))
@@ -173,6 +175,8 @@ fn mk_solver<'a>(pb: &'a TSPTW, relax: TSPTWRelax<'a>,
         },
         (None, Some(d)) => {
             let mdd = config_builder(pb, relax)
+                .with_load_vars(LoadVarsFromDepth::new(pb))
+                .with_max_width(IncreasingWithDepth::new(pb))
                 .with_cutoff(TimeBudget::new(Duration::from_secs(*d)))
                 .into_deep();
             let solver = ParallelSolver::new(mdd)
@@ -183,6 +187,8 @@ fn mk_solver<'a>(pb: &'a TSPTW, relax: TSPTWRelax<'a>,
         },
         (None, None) => {
             let mdd = config_builder(pb, relax)
+                .with_load_vars(LoadVarsFromDepth::new(pb))
+                .with_max_width(IncreasingWithDepth::new(pb))
                 .into_deep();
             let solver = ParallelSolver::new(mdd)
                 .with_verbosity(verbosity.unwrap_or(0))
