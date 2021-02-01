@@ -2,3 +2,5 @@
 Cargo.lock
 solution.txt
 check_solution
+.idea/modules.xml
+.idea/tsptw.iml
